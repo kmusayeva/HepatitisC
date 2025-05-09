@@ -1,0 +1,13 @@
+# virtual environments
+.venv/
+venv/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+
+# IDE settings
+.idea/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
