@@ -134,7 +134,8 @@ class MultiClassificationEvaluation(MultiClassification):
             axes[i].set_ylabel("")
             axes[i].set_xlabel("Predicted Label", fontsize=14)
 
-            axes[i].set_title(method)
+            method_dict = {"svc": "Support Vector Machine", "rf": "Random Forest", "nn": "Neural Network", "lr": "Logistic Regression"}
+            axes[i].set_title(method_dict[method])
 
         plt.tight_layout()
         plt.show()
