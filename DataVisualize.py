@@ -166,7 +166,7 @@ class DataVisualize:
 
     def Biomarkers(self, variable):
 
-        fig = plt.figure(figsize=(19, 4))
+        fig = plt.figure(figsize=(19, 5))
 
         ax1 = fig.add_subplot(1, 4, 1)  # add subplot 1 (1 row, 3 columns, first plot)
         ax2 = fig.add_subplot(1, 4, 2)
@@ -178,7 +178,7 @@ class DataVisualize:
         self.df[variable].plot.hist(
             bins=50, alpha=0.7, legend=False, color="blue", ax=ax1
         )
-        ax1.set_title(f"{variable} Distribution", y=1.12, fontsize=15)
+        ax1.set_title(f"{variable} Distribution", y=1, fontsize=15)
         ax1.set_xlabel("")
         ax1.set_ylabel(None)
 
@@ -186,7 +186,7 @@ class DataVisualize:
         sns.kdeplot(
             data=self.df,
             x=variable,
-            hue="Diagnosis_Multi",
+            hue="Diagnosis",
             common_norm=False,
             fill=True,
             alpha=0.4,
@@ -196,10 +196,12 @@ class DataVisualize:
         )
 
         ax2.set_title(
-            f"{variable} Distribution by Disease Presence", y=1.12, fontsize=14
+            f"{variable} Distribution Plot by Diagnosis", y=1, fontsize=14
         )
-        ax2.set_ylabel(f"{variable}")
+        ax2.set_ylabel(None)
         ax2.set_xlabel(None)
+
+        ax2.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
 
         # Boxplot of variable conditioned on binary disease categories
         sns.boxplot(
@@ -227,7 +229,7 @@ class DataVisualize:
         )
 
         ax3.set_title(
-            f"{variable} Distribution by Disease Presence", y=1.12, fontsize=14
+            f"{variable} Distribution by Disease Presence", y=1, fontsize=14
         )
         ax3.set_ylabel(f"{variable}")
         ax3.set_xlabel(None)
@@ -242,6 +244,7 @@ class DataVisualize:
             palette="muted",
             hue="Diagnosis_Multi",
             showfliers=False,
+            legend=None,
             ax=ax4,
         )
 
@@ -257,7 +260,7 @@ class DataVisualize:
         )
 
         ax4.set_title(
-            f"{variable} Distribution by Diagnosis Category", y=1.12, fontsize=14
+            f"{variable} Distribution by Diagnosis", y=1, fontsize=14
         )
         ax4.set_ylabel(f"{variable}")
         ax4.set_xlabel(None)
