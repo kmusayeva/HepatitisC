@@ -11,7 +11,7 @@ The dataset consists of 615 patients characterized by age, sex, and laboratory t
 
 Statistical analysis computes the prevalence of disease cases across variables, and adjusted odds ratio analysis. 
 
-<img src="figures/target_distri.png" width="400" />
+<img src="figures/PROT.png" width="400" />
 
 
 # Predictive Modeling
