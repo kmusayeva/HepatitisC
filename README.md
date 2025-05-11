@@ -5,13 +5,15 @@ This project represents statistical and predictive modeling done of the Hepatiti
 # Data
 The dataset consists of 615 patients characterized by age, sex, and laboratory tests values of 10 biochemical blood test markers. The target consists of 4 classes: Blood Donor, Hepatitis-C, Fibrosis, Cirrhosis. Only 12% of the dataset is disease cases. 
 
-<img src="figures/target_distri.png" width="200" />
+<img src="figures/target_distri.png" width="400" />
 
 # Statistical Analysis
 
 Statistical analysis computes the prevalence of disease cases across variables, and adjusted odds ratio analysis. 
 
-<img src="figures/PROT.png" width="600" />
+This analysis shows several significant predictors of disease (when we categorize the output into healthy and disease cases). For instance, a one-unit increase in the PROT biomarker results in 27% increase in the odds of disease holding other variables constant.
+
+<img src="figures/PROT.png" width="1200" />
 
 
 # Predictive Modeling
