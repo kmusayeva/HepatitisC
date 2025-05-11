@@ -1,6 +1,4 @@
 import pandas as pd
-import numpy as np
-import pickle
 from sklearn.pipeline import Pipeline
 from sklearn.impute import KNNImputer
 from sklearn.model_selection import train_test_split
@@ -10,35 +8,12 @@ from sklearn.metrics import (
     f1_score,
     roc_auc_score,
     matthews_corrcoef,
-    confusion_matrix,
-    ConfusionMatrixDisplay,
-    classification_report,
-    RocCurveDisplay,
-    PrecisionRecallDisplay,
-    make_scorer
+    confusion_matrix
 )
-from sklearn.model_selection import StratifiedKFold
-from imblearn.over_sampling import SMOTE
-import optuna
-import logging
-import xgboost as xgb
 
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.svm import SVC
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.feature_selection import RFECV
-from sklearn.model_selection import cross_val_predict, cross_val_score
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset, Subset
-import os
-import warnings
-from typing import List, Tuple, Optional, Sequence, Any, Dict
-import seaborn as sns
-import matplotlib.pyplot as plt
-import matplotlib as mpl
+from typing import Tuple, Sequence
+
+
 
 def safe_read_csv(filepath, **kwargs):
     """
@@ -53,7 +28,7 @@ def safe_read_csv(filepath, **kwargs):
     """
     try:
         df = pd.read_csv(filepath, **kwargs)
-        print(f"File read successfully: {filepath}")
+        #print(f"File read successfully: {filepath}")
         return df
     except FileNotFoundError:
         print(f"Error: File not found - {filepath}")
@@ -68,12 +43,12 @@ def safe_read_csv(filepath, **kwargs):
 
 
 def split_transform(
-        X: pd.DataFrame,
-        y: pd.Series,
-        test_size: float = 0.2,
-        drop_alp: bool = False,
-        random_state: int = 42
-    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+    X: pd.DataFrame,
+    y: pd.Series,
+    test_size: float = 0.2,
+    drop_alp: bool = False,
+    random_state: int = 42,
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
     """
     Split features and target into training and test sets, then apply preprocessing.
 
@@ -110,10 +85,7 @@ def split_transform(
     """
     # 1. Stratified split
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y,
-        test_size=test_size,
-        stratify=y,
-        random_state=random_state
+        X, y, test_size=test_size, stratify=y, random_state=random_state
     )
 
     # 2. Optional column drop
@@ -122,13 +94,12 @@ def split_transform(
         X_test = X_test.drop(columns="ALP")
 
     # Identify numeric columns
-    num_cols = X_train.select_dtypes(include=['float64', 'int64']).columns.tolist()
+    num_cols = X_train.select_dtypes(include=["float64", "int64"]).columns.tolist()
 
     # 3–4. Build and apply numeric pipeline
-    num_pipeline = Pipeline([
-        ('imputer', KNNImputer(n_neighbors=5)),
-        ('scaler', StandardScaler())
-    ])
+    num_pipeline = Pipeline(
+        [("imputer", KNNImputer(n_neighbors=5)), ("scaler", StandardScaler())]
+    )
     num_pipeline.fit(X_train[num_cols])
     X_train[num_cols] = num_pipeline.transform(X_train[num_cols])
     X_test[num_cols] = num_pipeline.transform(X_test[num_cols])
@@ -141,15 +112,13 @@ def split_transform(
     return X_train, X_test, y_train, y_test
 
 
-
-
 def evaluate_classification(
     y_true: Sequence[int],
     y_pred: Sequence[int],
     y_prob: Sequence[float],
     method: str,
-    pos_label: int = 1
-    ) -> pd.Series:
+    pos_label: int = 1,
+) -> pd.Series:
     """
     Compute common binary-classification metrics and return them as a pandas Series.
 
@@ -199,25 +168,23 @@ def evaluate_classification(
     mcc = matthews_corrcoef(y_true, y_pred)
 
     # AUC (if probabilities provided)
-    auc = roc_auc_score(y_true, y_prob) if y_prob is not None else float('nan')
+    auc = roc_auc_score(y_true, y_prob) if y_prob is not None else float("nan")
 
     # Package and return results
     return pd.Series(
         {
-            'sensitivity': round(sensitivity, 2),
-            'specificity': round(specificity, 2),
-            'f1_score':    round(f1, 2),
-            'auc':         round(auc, 2),
-            'mcc':         round(mcc, 2),
+            "sensitivity": round(sensitivity, 2),
+            "specificity": round(specificity, 2),
+            "f1_score": round(f1, 2),
+            "auc": round(auc, 2),
+            "mcc": round(mcc, 2),
         },
-        name=method
+        name=method,
     )
 
 
 def evaluate_classification_multiclass(
-    y_true: Sequence[int],
-    y_pred: Sequence[int],
-    method: str
+    y_true: Sequence[int], y_pred: Sequence[int], method: str
 ) -> pd.Series:
     """
     Compute multiclass classification metrics and return them as a pandas Series.
@@ -248,8 +215,8 @@ def evaluate_classification_multiclass(
         Each metric is rounded to two decimal places. The Series is named `method`.
     """
     # Compute F1 scores with different averaging strategies
-    f1_macro    = f1_score(y_true, y_pred, average="macro")
-    f1_micro    = f1_score(y_true, y_pred, average="micro")
+    f1_macro = f1_score(y_true, y_pred, average="macro")
+    f1_micro = f1_score(y_true, y_pred, average="micro")
     f1_weighted = f1_score(y_true, y_pred, average="weighted")
 
     # Compute Matthews Correlation Coefficient
@@ -258,11 +225,10 @@ def evaluate_classification_multiclass(
     # Package and return results
     return pd.Series(
         {
-            'macro_f1_score':    round(f1_macro, 2),
-            'micro_f1_score':    round(f1_micro, 2),
-            'weighted_f1_score': round(f1_weighted, 2),
-            'mcc':               round(mcc, 2),
+            "macro_f1_score": round(f1_macro, 2),
+            "micro_f1_score": round(f1_micro, 2),
+            "weighted_f1_score": round(f1_weighted, 2),
+            "mcc": round(mcc, 2),
         },
-        name=method
+        name=method,
     )
-

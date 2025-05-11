@@ -1,9 +1,23 @@
-from utils import *
+import optuna
+import pandas as pd
+import numpy as np
+import pickle
+from sklearn.pipeline import Pipeline
+from imblearn.over_sampling import SMOTE
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+from sklearn.linear_model import LogisticRegression
+from sklearn.feature_selection import RFECV
+from sklearn.model_selection import cross_val_score
+from sklearn.metrics import matthews_corrcoef
+import torch
+from torch.utils.data import DataLoader, TensorDataset, Subset
 from MultiClassification import MultiClassification
 from NNModel import NNModel
 
 # Suppress Optuna logging below WARNING
 optuna.logging.set_verbosity(optuna.logging.WARNING)
+
 
 class MultiClassificationTraining(MultiClassification):
     """
@@ -86,24 +100,24 @@ class MultiClassificationTraining(MultiClassification):
 
         def objective(trial):
             params = {
-                'n_estimators': trial.suggest_int('n_estimators', 50, 250),
-                'max_depth': trial.suggest_int('max_depth', 3, 20),
-                'min_samples_split': trial.suggest_int('min_samples_split', 2, 10),
-                'min_samples_leaf': trial.suggest_int('min_samples_leaf', 1, 10),
-                'max_features': trial.suggest_categorical('max_features', ['sqrt', 'log2', None])
+                "n_estimators": trial.suggest_int("n_estimators", 50, 250),
+                "max_depth": trial.suggest_int("max_depth", 3, 20),
+                "min_samples_split": trial.suggest_int("min_samples_split", 2, 10),
+                "min_samples_leaf": trial.suggest_int("min_samples_leaf", 1, 10),
+                "max_features": trial.suggest_categorical(
+                    "max_features", ["sqrt", "log2", None]
+                ),
             }
 
             model = RandomForestClassifier(**params, random_state=42, n_jobs=-1)
 
-            scores = cross_val_score(model,
-                                     self.X_train,
-                                     self.y_train,
-                                     cv=self.cv,
-                                     scoring=self.mcc_scorer)
+            scores = cross_val_score(
+                model, self.X_train, self.y_train, cv=self.cv, scoring=self.mcc_scorer
+            )
 
             return np.mean(scores)
 
-        study = optuna.create_study(direction='maximize')
+        study = optuna.create_study(direction="maximize")
         study.optimize(objective, n_trials=250)
 
         print("Best MCC:", round(study.best_value, 2))
@@ -128,25 +142,21 @@ class MultiClassificationTraining(MultiClassification):
 
         def objective(trial):
             params = {
-                'C': trial.suggest_float('C', 1e-3, 1e3, log=True),
-                'kernel': 'rbf',
-                'gamma': trial.suggest_float('gamma', 1e-4, 1e1, log=True),
-                'decision_function_shape': 'ovr'
+                "C": trial.suggest_float("C", 1e-3, 1e3, log=True),
+                "kernel": "rbf",
+                "gamma": trial.suggest_float("gamma", 1e-4, 1e1, log=True),
+                "decision_function_shape": "ovr",
             }
 
             model = SVC(**params, random_state=42, probability=True)
 
             scores = cross_val_score(
-                model,
-                self.X_train,
-                self.y_train,
-                cv=self.cv,
-                scoring=self.mcc_scorer
+                model, self.X_train, self.y_train, cv=self.cv, scoring=self.mcc_scorer
             )
 
             return scores.mean()
 
-        study = optuna.create_study(direction='maximize')
+        study = optuna.create_study(direction="maximize")
         study.optimize(objective, n_trials=150)
 
         print("Best MCC:", round(study.best_value, 2))
@@ -155,14 +165,12 @@ class MultiClassificationTraining(MultiClassification):
         best_clf = SVC(
             **study.best_params,
             probability=True,
-            decision_function_shape = 'ovr',
-            random_state=42
+            decision_function_shape="ovr",
+            random_state=42,
         )
 
         best_clf.fit(self.X_train, self.y_train)
         return best_clf
-
-
 
     def nn_train(self) -> torch.nn.Module:
         """
@@ -180,28 +188,30 @@ class MultiClassificationTraining(MultiClassification):
         num_classes = 4
 
         def objective(trial):
-            hidden_dim = trial.suggest_int('hidden_dim', 16, 128)
-            n_layers = trial.suggest_int('n_layers', 1, 3)
-            lr = trial.suggest_float('lr', 1e-4, 1e-1, log=True)
-            batch_size = trial.suggest_categorical('batch_size', [32, 64, 128])
+            hidden_dim = trial.suggest_int("hidden_dim", 16, 128)
+            n_layers = trial.suggest_int("n_layers", 1, 3)
+            lr = trial.suggest_float("lr", 1e-4, 1e-1, log=True)
+            batch_size = trial.suggest_categorical("batch_size", [32, 64, 128])
 
             mcc_scores = []
 
             for train_idx, val_idx in self.cv.split(self.X_train, self.y_train):
                 train_sub = Subset(train_dataset, train_idx)
                 val_sub = Subset(train_dataset, val_idx)
-                train_loader = DataLoader(train_sub, batch_size=batch_size, shuffle=True)
+                train_loader = DataLoader(
+                    train_sub, batch_size=batch_size, shuffle=True
+                )
                 val_loader = DataLoader(val_sub, batch_size=batch_size, shuffle=False)
 
                 model = NNModel(
-                    input_dim = self.X_train.shape[1],
-                    hidden_dim = hidden_dim,
-                    n_layers = n_layers,
-                    num_classes = num_classes
+                    input_dim=self.X_train.shape[1],
+                    hidden_dim=hidden_dim,
+                    n_layers=n_layers,
+                    num_classes=num_classes,
                 )
 
-                optimizer = optim.Adam(model.parameters(), lr=lr)
-                criterion = nn.CrossEntropyLoss()
+                optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+                criterion = torch.nn.CrossEntropyLoss()
 
                 model.train()
                 for epoch in range(20):
@@ -228,7 +238,7 @@ class MultiClassificationTraining(MultiClassification):
 
             return np.mean(mcc_scores)
 
-        study = optuna.create_study(direction='maximize')
+        study = optuna.create_study(direction="maximize")
         study.optimize(objective, n_trials=150)
         print("Best MCC:", round(study.best_value, 2))
         print("Best params:", study.best_params)
@@ -238,19 +248,19 @@ class MultiClassificationTraining(MultiClassification):
         best_params = study.best_params
 
         best_model = NNModel(
-            input_dim = self.X_train.shape[1],
-            hidden_dim = best_params['hidden_dim'],
-            n_layers = best_params['n_layers'],
-            num_classes=num_classes
+            input_dim=self.X_train.shape[1],
+            hidden_dim=best_params["hidden_dim"],
+            n_layers=best_params["n_layers"],
+            num_classes=num_classes,
         )
 
-        best_optimizer = optim.Adam(best_model.parameters(), lr=best_params['lr'])
+        best_optimizer = torch.optim.Adam(best_model.parameters(), lr=best_params["lr"])
 
-        criterion = nn.CrossEntropyLoss()
+        criterion = torch.nn.CrossEntropyLoss()
 
-        train_loader = DataLoader(train_dataset,
-                                  batch_size=best_params['batch_size'],
-                                  shuffle=True)
+        train_loader = DataLoader(
+            train_dataset, batch_size=best_params["batch_size"], shuffle=True
+        )
 
         best_model.train()
         for epoch in range(20):
@@ -272,23 +282,18 @@ class MultiClassificationTraining(MultiClassification):
             Pipeline containing the RFECV selector and LogisticRegression estimator,
             fitted on the training data.
         """
-        lr = LogisticRegression(penalty='l2',
-                                solver='lbfgs',
-                                max_iter=1000,
-                                random_state=42
-                                )
+        lr = LogisticRegression(
+            penalty="l2", solver="lbfgs", max_iter=1000, random_state=42
+        )
         selector = RFECV(
             estimator=lr,
             step=1,
             cv=self.cv,
             scoring=self.mcc_scorer,
-            min_features_to_select=1
+            min_features_to_select=1,
         )
-        pipeline = Pipeline([
-            ('feature_selection', selector),
-            ('classifier', lr)])
+        pipeline = Pipeline([("feature_selection", selector), ("classifier", lr)])
 
         pipeline.fit(self.X_train, self.y_train)
 
         return pipeline
-

@@ -1,10 +1,27 @@
-from utils import *
+import optuna
+import pandas as pd
+import numpy as np
+import pickle
+from sklearn.pipeline import Pipeline
+from sklearn.impute import KNNImputer
+from imblearn.over_sampling import SMOTE
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+import xgboost as xgb
+from sklearn.linear_model import LogisticRegression
+from sklearn.feature_selection import RFECV
+from sklearn.model_selection import cross_val_predict, cross_val_score
+import torch
+from torch.utils.data import DataLoader, TensorDataset, Subset
+from typing import Any, Dict
+
 from BinaryClassification import *
 from NNModel import NNModel
 
 
 # Suppress Optuna logging below WARNING
 optuna.logging.set_verbosity(optuna.logging.WARNING)
+
 
 class BinaryClassificationTraining(BinaryClassification):
     """
@@ -39,8 +56,6 @@ class BinaryClassificationTraining(BinaryClassification):
         """
         smote = SMOTE(random_state=42)
         self.X_train, self.y_train = smote.fit_resample(self.X_train, self.y_train)
-
-
 
     def trainit(self) -> None:
         """
@@ -86,22 +101,24 @@ class BinaryClassificationTraining(BinaryClassification):
             The model trained on the entire SMOTE-resampled training set
             with the best-found hyperparameters.
         """
+
         def objective(trial: optuna.Trial) -> float:
             params: Dict[str, Any] = {
-                'n_estimators': trial.suggest_int('n_estimators', 50, 200),
-                'max_depth': trial.suggest_int('max_depth', 3, 20),
-                'min_samples_split': trial.suggest_int('min_samples_split', 2, 20),
-                'min_samples_leaf': trial.suggest_int('min_samples_leaf', 1, 20),
-                'max_features': trial.suggest_categorical('max_features', ['sqrt', 'log2', None])
+                "n_estimators": trial.suggest_int("n_estimators", 50, 200),
+                "max_depth": trial.suggest_int("max_depth", 3, 20),
+                "min_samples_split": trial.suggest_int("min_samples_split", 2, 20),
+                "min_samples_leaf": trial.suggest_int("min_samples_leaf", 1, 20),
+                "max_features": trial.suggest_categorical(
+                    "max_features", ["sqrt", "log2", None]
+                ),
             }
             clf = RandomForestClassifier(**params, random_state=42, n_jobs=-1)
             scores = cross_val_score(
-                clf, self.X_train, self.y_train,
-                cv=self.cv, scoring=self.mcc_scorer
+                clf, self.X_train, self.y_train, cv=self.cv, scoring=self.mcc_scorer
             )
             return scores.mean()
 
-        study = optuna.create_study(direction='maximize')
+        study = optuna.create_study(direction="maximize")
         study.optimize(objective, n_trials=250)
         print("Best MCC:", study.best_value)
         print("Best params:", study.best_params)
@@ -122,27 +139,25 @@ class BinaryClassificationTraining(BinaryClassification):
             The model re-trained on the entire SMOTE-resampled training set
             with the best-found hyperparameters.
         """
+
         def objective(trial: optuna.Trial) -> float:
             params = {
-                'C': trial.suggest_float('C', 1e-3, 1e3, log=True),
-                'kernel': 'rbf',
-                'gamma': trial.suggest_float('gamma', 1e-4, 1e1, log=True)
+                "C": trial.suggest_float("C", 1e-3, 1e3, log=True),
+                "kernel": "rbf",
+                "gamma": trial.suggest_float("gamma", 1e-4, 1e1, log=True),
             }
             clf = SVC(**params, probability=True, random_state=42)
             scores = cross_val_score(
-                clf, self.X_train, self.y_train,
-                cv=self.cv, scoring=self.mcc_scorer
+                clf, self.X_train, self.y_train, cv=self.cv, scoring=self.mcc_scorer
             )
             return scores.mean()
 
-        study = optuna.create_study(direction='maximize')
+        study = optuna.create_study(direction="maximize")
         study.optimize(objective, n_trials=150)
         print("Best MCC:", study.best_value)
         print("Best params:", study.best_params)
 
-        best_clf = SVC(
-            **study.best_params, probability=True, random_state=42
-        )
+        best_clf = SVC(**study.best_params, probability=True, random_state=42)
         best_clf.fit(self.X_train, self.y_train)
         return best_clf
 
@@ -156,32 +171,49 @@ class BinaryClassificationTraining(BinaryClassification):
             The model re-trained on the entire SMOTE-resampled training set
             with the best-found hyperparameters.
         """
+
         def objective(trial: optuna.Trial) -> float:
             param: Dict[str, Any] = {
-                'verbosity': 0,
-                'objective': 'binary:logistic',
-                'tree_method': 'hist',
-                'booster': trial.suggest_categorical('booster', ['gbtree', 'dart']),
-                'lambda': trial.suggest_float('lambda', 1e-8, 1.0, log=True),
-                'alpha': trial.suggest_float('alpha', 1e-8, 1.0, log=True),
-                'subsample': trial.suggest_float('subsample', 0.2, 1.0),
-                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.2, 1.0)
+                "verbosity": 0,
+                "objective": "binary:logistic",
+                "tree_method": "hist",
+                "booster": trial.suggest_categorical("booster", ["gbtree", "dart"]),
+                "lambda": trial.suggest_float("lambda", 1e-8, 1.0, log=True),
+                "alpha": trial.suggest_float("alpha", 1e-8, 1.0, log=True),
+                "subsample": trial.suggest_float("subsample", 0.2, 1.0),
+                "colsample_bytree": trial.suggest_float("colsample_bytree", 0.2, 1.0),
             }
-            if param['booster'] in ['gbtree', 'dart']:
-                param.update({
-                    'max_depth': trial.suggest_int('max_depth', 3, 9, step=2),
-                    'min_child_weight': trial.suggest_int('min_child_weight', 2, 10),
-                    'eta': trial.suggest_float('eta', 1e-8, 1.0, log=True),
-                    'gamma': trial.suggest_float('gamma', 1e-8, 1.0, log=True),
-                    'grow_policy': trial.suggest_categorical('grow_policy', ['depthwise', 'lossguide'])
-                })
-            if param['booster'] == 'dart':
-                param.update({
-                    'sample_type': trial.suggest_categorical('sample_type', ['uniform', 'weighted']),
-                    'normalize_type': trial.suggest_categorical('normalize_type', ['tree', 'forest']),
-                    'rate_drop': trial.suggest_float('rate_drop', 1e-8, 1.0, log=True),
-                    'skip_drop': trial.suggest_float('skip_drop', 1e-8, 1.0, log=True)
-                })
+            if param["booster"] in ["gbtree", "dart"]:
+                param.update(
+                    {
+                        "max_depth": trial.suggest_int("max_depth", 3, 9, step=2),
+                        "min_child_weight": trial.suggest_int(
+                            "min_child_weight", 2, 10
+                        ),
+                        "eta": trial.suggest_float("eta", 1e-8, 1.0, log=True),
+                        "gamma": trial.suggest_float("gamma", 1e-8, 1.0, log=True),
+                        "grow_policy": trial.suggest_categorical(
+                            "grow_policy", ["depthwise", "lossguide"]
+                        ),
+                    }
+                )
+            if param["booster"] == "dart":
+                param.update(
+                    {
+                        "sample_type": trial.suggest_categorical(
+                            "sample_type", ["uniform", "weighted"]
+                        ),
+                        "normalize_type": trial.suggest_categorical(
+                            "normalize_type", ["tree", "forest"]
+                        ),
+                        "rate_drop": trial.suggest_float(
+                            "rate_drop", 1e-8, 1.0, log=True
+                        ),
+                        "skip_drop": trial.suggest_float(
+                            "skip_drop", 1e-8, 1.0, log=True
+                        ),
+                    }
+                )
             # CV with manual XGBoost loop
             mccs = []
             for train_idx, val_idx in self.cv.split(self.X_train, self.y_train):
@@ -190,22 +222,23 @@ class BinaryClassificationTraining(BinaryClassification):
                 dtrain = xgb.DMatrix(X_tr, label=y_tr, enable_categorical=True)
                 dval = xgb.DMatrix(X_val, label=y_val, enable_categorical=True)
                 booster = xgb.train(
-                    param, dtrain, num_boost_round=100,
-                    evals=[(dval, 'validation')], early_stopping_rounds=10,
-                    verbose_eval=False
+                    param,
+                    dtrain,
+                    num_boost_round=100,
+                    evals=[(dval, "validation")],
+                    early_stopping_rounds=10,
+                    verbose_eval=False,
                 )
                 preds = (booster.predict(dval) > 0.5).astype(int)
                 mccs.append(matthews_corrcoef(y_val, preds))  # type: ignore
             return float(np.mean(mccs))  # type: ignore
 
-        study = optuna.create_study(direction='maximize')
+        study = optuna.create_study(direction="maximize")
         study.optimize(objective, n_trials=250, timeout=600)
         print("Best MCC:", study.best_value)
         print("Best params:", study.best_params)
 
-        final_model = xgb.XGBClassifier(
-            **study.best_params, enable_categorical=True
-        )
+        final_model = xgb.XGBClassifier(**study.best_params, enable_categorical=True)
         final_model.fit(self.X_train, self.y_train)
         return final_model
 
@@ -225,24 +258,28 @@ class BinaryClassificationTraining(BinaryClassification):
 
         def objective(trial: optuna.Trial) -> float:
             params = {
-                'hidden_dim': trial.suggest_int('hidden_dim', 16, 128),
-                'n_layers': trial.suggest_int('n_layers', 1, 3),
-                'lr': trial.suggest_float('lr', 1e-4, 1e-1, log=True),
-                'batch_size': trial.suggest_categorical('batch_size', [32, 64, 128])
+                "hidden_dim": trial.suggest_int("hidden_dim", 16, 128),
+                "n_layers": trial.suggest_int("n_layers", 1, 3),
+                "lr": trial.suggest_float("lr", 1e-4, 1e-1, log=True),
+                "batch_size": trial.suggest_categorical("batch_size", [32, 64, 128]),
             }
             mccs: list[float] = []
             for train_idx, val_idx in self.cv.split(self.X_train, self.y_train):
                 train_sub = Subset(dataset, train_idx)
                 val_sub = Subset(dataset, val_idx)
-                train_loader = DataLoader(train_sub, batch_size=params['batch_size'], shuffle=True)
-                val_loader   = DataLoader(val_sub,   batch_size=params['batch_size'], shuffle=False)
+                train_loader = DataLoader(
+                    train_sub, batch_size=params["batch_size"], shuffle=True
+                )
+                val_loader = DataLoader(
+                    val_sub, batch_size=params["batch_size"], shuffle=False
+                )
 
                 model = NNModel(
                     input_dim=self.X_train.shape[1],
-                    hidden_dim=params['hidden_dim'],
-                    n_layers=params['n_layers']
+                    hidden_dim=params["hidden_dim"],
+                    n_layers=params["n_layers"],
                 )
-                optimizer = torch.optim.Adam(model.parameters(), lr=params['lr'])
+                optimizer = torch.optim.Adam(model.parameters(), lr=params["lr"])
                 criterion = torch.nn.BCEWithLogitsLoss()
 
                 # Train loop
@@ -269,7 +306,7 @@ class BinaryClassificationTraining(BinaryClassification):
 
             return np.mean(mccs)
 
-        study = optuna.create_study(direction='maximize')
+        study = optuna.create_study(direction="maximize")
         study.optimize(objective, n_trials=150)
         print("Best MCC:", study.best_value)
         print("Best params:", study.best_params)
@@ -278,12 +315,12 @@ class BinaryClassificationTraining(BinaryClassification):
         best = study.best_params
         final_model = NNModel(
             input_dim=self.X_train.shape[1],
-            hidden_dim=best['hidden_dim'],
-            n_layers=best['n_layers']
+            hidden_dim=best["hidden_dim"],
+            n_layers=best["n_layers"],
         )
-        optimizer = torch.optim.Adam(final_model.parameters(), lr=best['lr'])
+        optimizer = torch.optim.Adam(final_model.parameters(), lr=best["lr"])
         criterion = torch.nn.BCEWithLogitsLoss()
-        train_loader = DataLoader(dataset, batch_size=best['batch_size'], shuffle=True)
+        train_loader = DataLoader(dataset, batch_size=best["batch_size"], shuffle=True)
         final_model.train()
         for _ in range(20):
             for xb, yb in train_loader:
@@ -302,18 +339,16 @@ class BinaryClassificationTraining(BinaryClassification):
             Pipeline containing the RFECV selector and LogisticRegression estimator,
             fitted on the training data.
         """
-        lr = LogisticRegression(penalty='l2',
-                                solver='liblinear',
-                                max_iter=1000,
-                                random_state=42
-                                )
+        lr = LogisticRegression(
+            penalty="l2", solver="liblinear", max_iter=1000, random_state=42
+        )
         selector = RFECV(
             estimator=lr,
             step=1,
             cv=self.cv,
             scoring=self.mcc_scorer,
-            min_features_to_select=1
+            min_features_to_select=1,
         )
-        pipeline = Pipeline([('feature_selection', selector), ('classifier', lr)])
+        pipeline = Pipeline([("feature_selection", selector), ("classifier", lr)])
         pipeline.fit(self.X_train, self.y_train)
         return pipeline
