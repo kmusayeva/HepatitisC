@@ -19,10 +19,10 @@ class DataVisualize:
 
     def Target(self):
 
-        df_total = self.df.groupby("Diagnosis_Multi").size().reset_index(name="Total")
+        df_total = self.df.groupby("Diagnosis").size().reset_index(name="Total")
 
         df_total.sort_values(
-            by=["Diagnosis_Multi"],
+            by=["Diagnosis"],
             key=lambda x: x.map(self.diagnosis_dict),
             ascending=True,
             inplace=True,
@@ -42,7 +42,7 @@ class DataVisualize:
 
         plt.title("", y=1.12, fontsize=15)
 
-        plt.legend(labels=df_total["Diagnosis_Multi"], loc="upper left", fontsize=9)
+        plt.legend(labels=df_total["Diagnosis"], loc="upper left", fontsize=9)
 
         plt.tight_layout()
 

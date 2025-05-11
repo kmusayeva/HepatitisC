@@ -27,7 +27,12 @@ if __name__ == "__main__":
         exit()
     # Data Visualization
     if args.visualize:
-        DataVisualize(hepData).Biomarkers(args.visualize)
+        if args.visualize == "target":
+            DataVisualize(hepData).Target()
+        elif args.visualize == "age":
+            DataVisualize(hepData).AgeDisease()
+        else:
+            DataVisualize(hepData).Biomarkers(args.visualize)
 
     if args.train:
         # Binary Classification Training
