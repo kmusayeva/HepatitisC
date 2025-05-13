@@ -2,7 +2,7 @@
 
 Author: Khadija Musayeva
 
-The current report represents statistical and predictive modeling done on the Hepatitis C dataset publicly available at UCI website https://archive.ics.uci.edu/dataset/571/hcv+data.
+The current report represents statistical and predictive modeling of the Hepatitis C dataset publicly available at UCI website https://archive.ics.uci.edu/dataset/571/hcv+data.
 
 The dataset consists of 615 patients characterized by age, sex, and laboratory tests values of 10 biochemical blood test markers. The target consists of 4 classes: Blood Donor, Hepatitis-C, Fibrosis, Cirrhosis.
 
